@@ -3,13 +3,27 @@ const multer = require("multer");
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const { LanguageTool } = require("languagetool-node");
+const { LanguageTool } = require("languagetool-api");
 const cors = require("cors");
-
+const { PDFDocument } = require("pdf-lib");
+const mammoth = require("mammoth");
 const app = express();
 app.use(cors());
 app.use(express.json());
+// Fetch user's document history
+app.get("/documents", authenticate, async (req, res) => {
+  const documents = await Document.find({ userId: req.user._id });
+  res.send(documents);
+});
 
+// Download corrected document
+app.get("/download/:id", authenticate, async (req, res) => {
+  const document = await Document.findById(req.params.id);
+  if (!document) return res.status(404).send("Document not found.");
+  res.setHeader("Content-Type", "text/plain");
+  res.setHeader("Content-Disposition", `attachment; filename=${document.filename}`);
+  res.send(document.correctedText);
+});
 // MongoDB connection
 mongoose.connect("mongodb://localhost:27017/grammar_checker", {
   useNewUrlParser: true,
@@ -33,11 +47,35 @@ const documentSchema = new mongoose.Schema({
 });
 const Document = mongoose.model("Document", documentSchema);
 
-// File upload setup
+const extractTextFromPDF = async (filePath) => {
+  const pdfBytes = require("fs").readFileSync(filePath);
+  const pdfDoc = await PDFDocument.load(pdfBytes);
+  const pages = pdfDoc.getPages();
+  let text = "";
+  for (const page of pages) {
+    text += page.getTextContent().items.map((item) => item.str).join(" ");
+  }
+  return text;
+};// File upload setup
 const upload = multer({ dest: "uploads/" });
 
-// LanguageTool setup
-const lt = new LanguageTool("en-US");
+const extractTextFromDOCX = async (filePath) => {
+  const result = await mammoth.extractRawText({ path: filePath });
+  return result.value;
+};// LanguageTo setup
+const languageTool = require('languagetool-api');
+
+languageTool.check(
+  {
+    text: 'This is a example text with error.',
+    language: 'en',
+  },
+  function (err, result) {
+    if (err) console.error(err);
+    else console.log(result);
+  }
+);
+
 
 // Middleware for authentication
 const authenticate = async (req, res, next) => {
@@ -95,6 +133,41 @@ app.post("/upload", authenticate, upload.single("file"), async (req, res) => {
 app.get("/documents", authenticate, async (req, res) => {
   const documents = await Document.find({ userId: req.user._id });
   res.send(documents);
+});
+app.post("/upload", authenticate, upload.single("file"), async (req, res) => {
+  const filePath = req.file.path;
+  const fileExtension = req.file.originalname.split(".").pop().toLowerCase();
+  let fileContent;
+
+  try {
+    if (fileExtension === "pdf") {
+      fileContent = await extractTextFromPDF(filePath);
+    } else if (fileExtension === "docx") {
+      fileContent = await extractTextFromDOCX(filePath);
+    } else {
+      fileContent = require("fs").readFileSync(filePath, "utf8");
+    }
+
+    const matches = await lt.check(fileContent);
+    const correctedText = matches.reduce((text, match) => {
+      return text.replace(match.context.text, match.replacements[0]?.value || match.context.text);
+    }, fileContent);
+
+    const document = new Document({
+      userId: req.user._id,
+      filename: req.file.originalname,
+      originalText: fileContent,
+      correctedText,
+      stats: {
+        spellingErrors: matches.filter((m) => m.rule.category.id === "TYPOS").length,
+        grammarErrors: matches.filter((m) => m.rule.category.id !== "TYPOS").length,
+      },
+    });
+    await document.save();
+    res.send({ correctedText, stats: document.stats });
+  } catch (err) {
+    res.status(500).send("Error processing file.");
+  }
 });
 
 app.listen(5000, () => console.log("Server running on http://localhost:5000"));
