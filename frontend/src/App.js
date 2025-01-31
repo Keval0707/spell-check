@@ -29,14 +29,18 @@ function App() {
   const handleUpload = async () => {
     const formData = new FormData();
     formData.append("file", file);
+
     try {
       const res = await axios.post("http://localhost:5000/upload", formData, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
+        },
       });
       setResult(res.data);
       setEditorContent(res.data.correctedText);
     } catch (err) {
-      console.error(err);
+      console.error("Upload Error:", err.response?.data || err.message);
     }
   };
 
