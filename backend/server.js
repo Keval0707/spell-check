@@ -11,6 +11,7 @@ const fs = require("fs");
 const axios = require("axios");
 const helmet = require("helmet");
 const morgan = require("morgan");
+const nodemailer = require("nodemailer");
 const { body, validationResult } = require("express-validator");
 
 const app = express();
@@ -22,6 +23,8 @@ app.use(morgan("combined")); // Log HTTP requests
 // Environment variables
 const MONGO_URI = process.env.MONGO_URI || "your-default-mongo-url";
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
+const EMAIL_USER = process.env.EMAIL_USER || "your-email@gmail.com";
+const EMAIL_PASS = process.env.EMAIL_PASS || "your-email-password";
 
 // MongoDB connection
 mongoose
@@ -106,6 +109,15 @@ const upload = multer({
     } else {
       cb(new Error("Invalid file type. Only PDF, DOCX, and TXT files are allowed."));
     }
+  },
+});
+
+// Configure nodemailer
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: EMAIL_USER,
+    pass: EMAIL_PASS,
   },
 });
 
@@ -209,6 +221,20 @@ app.post("/upload", authenticate, upload.single("file"), async (req, res) => {
     });
 
     await document.save();
+
+    // Send email notification
+    const user = await User.findById(req.user._id);
+    const mailOptions = {
+      from: EMAIL_USER,
+      to: user.email,
+      subject: "Document Processing Complete",
+      text: `Your document "${req.file.originalname}" has been processed.`,
+    };
+    transporter.sendMail(mailOptions, (err, info) => {
+      if (err) console.error("Error sending email:", err);
+      else console.log("Email sent:", info.response);
+    });
+
     res.send({ correctedText, stats: document.stats });
   } catch (err) {
     console.error("Error processing file:", err);
@@ -217,6 +243,17 @@ app.post("/upload", authenticate, upload.single("file"), async (req, res) => {
     // Clean up uploaded file
     fs.unlinkSync(filePath);
   }
+});
+
+// Admin Routes
+app.get("/admin/users", async (req, res) => {
+  const users = await User.find({});
+  res.send(users);
+});
+
+app.get("/admin/documents", async (req, res) => {
+  const documents = await Document.find({});
+  res.send(documents);
 });
 
 // Start the Server
