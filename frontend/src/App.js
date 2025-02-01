@@ -2,6 +2,21 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
+import {
+  AppBar,
+  Toolbar,
+  Typography,
+  Button,
+  TextField,
+  Container,
+  List,
+  ListItem,
+  ListItemText,
+  Select,
+  MenuItem,
+  Box,
+} from "@mui/material";
+import { CloudUpload, History, Dashboard, Share } from "@mui/icons-material";
 
 function App() {
   const [email, setEmail] = useState("");
@@ -10,10 +25,13 @@ function App() {
   const [file, setFile] = useState(null);
   const [result, setResult] = useState(null);
   const [documents, setDocuments] = useState([]);
+  const [sharedDocuments, setSharedDocuments] = useState([]);
   const [editorContent, setEditorContent] = useState("");
-  const [view, setView] = useState("upload"); // 'upload' or 'history'
+  const [view, setView] = useState("upload");
+  const [language, setLanguage] = useState("en-US");
+  const [collaboratorEmail, setCollaboratorEmail] = useState("");
 
-  // Fetch document history
+  // Fetch document history and shared documents
   useEffect(() => {
     if (token) {
       axios
@@ -22,6 +40,13 @@ function App() {
         })
         .then((res) => setDocuments(res.data))
         .catch((err) => console.error(err));
+
+      axios
+        .get("http://localhost:5000/shared-documents", {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        .then((res) => setSharedDocuments(res.data))
+        .catch((err) => console.error(err));
     }
   }, [token]);
 
@@ -29,18 +54,15 @@ function App() {
   const handleUpload = async () => {
     const formData = new FormData();
     formData.append("file", file);
-
+    formData.append("language", language);
     try {
       const res = await axios.post("http://localhost:5000/upload", formData, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "multipart/form-data",
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
       setResult(res.data);
       setEditorContent(res.data.correctedText);
     } catch (err) {
-      console.error("Upload Error:", err.response?.data || err.message);
+      console.error(err);
     }
   };
 
@@ -62,65 +84,137 @@ function App() {
     }
   };
 
+  // Handle adding collaborator
+  const handleAddCollaborator = async (documentId) => {
+    try {
+      await axios.post(
+        `http://localhost:5000/document/${documentId}/add-collaborator`,
+        { email: collaboratorEmail },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      alert("Collaborator added.");
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   return (
     <div>
-      <h1>Grammar Checker</h1>
-      <div>
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        <button onClick={() => axios.post("http://localhost:5000/signup", { email, password }).then(() => alert("User registered."))}>
-          Signup
-        </button>
-        <button onClick={() => axios.post("http://localhost:5000/login", { email, password }).then((res) => setToken(res.data.token))}>
-          Login
-        </button>
-      </div>
-
-      {token && (
-        <div>
-          <button onClick={() => setView("upload")}>Upload Document</button>
-          <button onClick={() => setView("history")}>Document History</button>
-        </div>
-      )}
-
-      {view === "upload" && token && (
-        <div>
-          <input type="file" onChange={(e) => setFile(e.target.files[0])} />
-          <button onClick={handleUpload}>Upload</button>
-          {result && (
-            <div>
-              <h2>Corrected Text</h2>
-              <ReactQuill value={editorContent} onChange={setEditorContent} />
-              <h2>Stats</h2>
-              <pre>{JSON.stringify(result.stats, null, 2)}</pre>
-            </div>
+      <AppBar position="static">
+        <Toolbar>
+          <Typography variant="h6" sx={{ flexGrow: 1 }}>
+            Grammar Checker
+          </Typography>
+          {token && (
+            <Box>
+              <Button color="inherit" onClick={() => setView("upload")} startIcon={<CloudUpload />}>
+                Upload
+              </Button>
+              <Button color="inherit" onClick={() => setView("history")} startIcon={<History />}>
+                History
+              </Button>
+              <Button color="inherit" onClick={() => setView("shared")} startIcon={<Share />}>
+                Shared
+              </Button>
+              <Button color="inherit" onClick={() => setView("admin")} startIcon={<Dashboard />}>
+                Admin
+              </Button>
+            </Box>
           )}
-        </div>
-      )}
+        </Toolbar>
+      </AppBar>
 
-      {view === "history" && token && (
-        <div>
-          <h2>Document History</h2>
-          <ul>
-            {documents.map((doc) => (
-              <li key={doc._id}>
-                <span>{doc.filename}</span>
-                <button onClick={() => handleDownload(doc._id)}>Download</button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <Container sx={{ mt: 4 }}>
+        {!token ? (
+          <Box>
+            <TextField
+              label="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              fullWidth
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              label="Password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              fullWidth
+              sx={{ mb: 2 }}
+            />
+            <Button
+              variant="contained"
+              onClick={() => axios.post("http://localhost:5000/signup", { email, password }).then(() => alert("User registered."))}
+            >
+              Signup
+            </Button>
+            <Button
+              variant="contained"
+              sx={{ ml: 2 }}
+              onClick={() => axios.post("http://localhost:5000/login", { email, password }).then((res) => setToken(res.data.token))}
+            >
+              Login
+            </Button>
+          </Box>
+        ) : (
+          <Box>
+            {view === "upload" && (
+              <Box>
+                <input type="file" onChange={(e) => setFile(e.target.files[0])} />
+                <Select value={language} onChange={(e) => setLanguage(e.target.value)} sx={{ ml: 2 }}>
+                  <MenuItem value="en-US">English (US)</MenuItem>
+                  <MenuItem value="fr">French</MenuItem>
+                  <MenuItem value="es">Spanish</MenuItem>
+                  <MenuItem value="de">German</MenuItem>
+                </Select>
+                <Button variant="contained" onClick={handleUpload} sx={{ ml: 2 }}>
+                  Upload
+                </Button>
+                {result && (
+                  <Box sx={{ mt: 4 }}>
+                    <Typography variant="h6">Corrected Text</Typography>
+                    <ReactQuill value={editorContent} onChange={setEditorContent} />
+                    <Typography variant="h6" sx={{ mt: 2 }}>Stats</Typography>
+                    <pre>{JSON.stringify(result.stats, null, 2)}</pre>
+                  </Box>
+                )}
+              </Box>
+            )}
+
+            {view === "history" && (
+              <Box>
+                <Typography variant="h6">Document History</Typography>
+                <List>
+                  {documents.map((doc) => (
+                    <ListItem key={doc._id}>
+                      <ListItemText primary={doc.filename} />
+                      <Button variant="contained" onClick={() => handleDownload(doc._id)}>
+                        Download
+                      </Button>
+                    </ListItem>
+                  ))}
+                </List>
+              </Box>
+            )}
+
+            {view === "shared" && (
+              <Box>
+                <Typography variant="h6">Shared Documents</Typography>
+                <List>
+                  {sharedDocuments.map((doc) => (
+                    <ListItem key={doc._id}>
+                      <ListItemText primary={doc.filename} />
+                      <Button variant="contained" onClick={() => handleDownload(doc._id)}>
+                        Download
+                      </Button>
+                    </ListItem>
+                  ))}
+                </List>
+              </Box>
+            )}
+          </Box>
+        )}
+      </Container>
     </div>
   );
 }
