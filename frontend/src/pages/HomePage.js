@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { TextField, Button, Select, MenuItem, Box, Typography } from "@mui/material";
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
+import axios from "axios";
 
 const HomePage = ({ token }) => {
   const [file, setFile] = useState(null);
@@ -14,7 +15,7 @@ const HomePage = ({ token }) => {
     formData.append("file", file);
     formData.append("language", language);
     try {
-      const res = await axios.post("http://localhost:5000/upload", formData, {
+      const res = await axios.post("http://localhost:5000/api/documents/upload", formData, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setResult(res.data);

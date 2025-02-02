@@ -21,7 +21,7 @@ import { CloudUpload, History, Dashboard, Share } from "@mui/icons-material";
 function App() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [token, setToken] = useState("");
+  const [token, setToken] = useState(localStorage.getItem("token") || "");
   const [file, setFile] = useState(null);
   const [result, setResult] = useState(null);
   const [documents, setDocuments] = useState([]);
@@ -31,27 +31,38 @@ function App() {
   const [language, setLanguage] = useState("en-US");
   const [collaboratorEmail, setCollaboratorEmail] = useState("");
 
-  // Fetch document history and shared documents
   useEffect(() => {
     if (token) {
-      axios
-        .get("http://localhost:5000/documents", {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        .then((res) => setDocuments(res.data))
-        .catch((err) => console.error(err));
-
-      axios
-        .get("http://localhost:5000/shared-documents", {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        .then((res) => setSharedDocuments(res.data))
-        .catch((err) => console.error(err));
+      localStorage.setItem("token", token);
+      fetchDocuments();
+      fetchSharedDocuments();
     }
   }, [token]);
 
-  // Handle file upload
+  const fetchDocuments = async () => {
+    try {
+      const res = await axios.get("http://localhost:5000/documents", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setDocuments(res.data);
+    } catch (err) {
+      console.error("Error fetching documents:", err);
+    }
+  };
+
+  const fetchSharedDocuments = async () => {
+    try {
+      const res = await axios.get("http://localhost:5000/shared-documents", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setSharedDocuments(res.data);
+    } catch (err) {
+      console.error("Error fetching shared documents:", err);
+    }
+  };
+
   const handleUpload = async () => {
+    if (!file) return alert("Please select a file.");
     const formData = new FormData();
     formData.append("file", file);
     formData.append("language", language);
@@ -62,11 +73,10 @@ function App() {
       setResult(res.data);
       setEditorContent(res.data.correctedText);
     } catch (err) {
-      console.error(err);
+      console.error("Upload error:", err);
     }
   };
 
-  // Handle document download
   const handleDownload = async (id) => {
     try {
       const res = await axios.get(`http://localhost:5000/download/${id}`, {
@@ -80,21 +90,25 @@ function App() {
       document.body.appendChild(link);
       link.click();
     } catch (err) {
-      console.error(err);
+      console.error("Download error:", err);
     }
   };
 
-  // Handle adding collaborator
-  const handleAddCollaborator = async (documentId) => {
+  const handleLogin = async () => {
     try {
-      await axios.post(
-        `http://localhost:5000/document/${documentId}/add-collaborator`,
-        { email: collaboratorEmail },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      alert("Collaborator added.");
+      const res = await axios.post("http://localhost:5000/login", { email, password });
+      setToken(res.data.token);
     } catch (err) {
-      console.error(err);
+      console.error("Login error:", err);
+    }
+  };
+
+  const handleSignup = async () => {
+    try {
+      await axios.post("http://localhost:5000/signup", { email, password });
+      alert("User registered successfully.");
+    } catch (err) {
+      console.error("Signup error:", err);
     }
   };
 
@@ -116,9 +130,7 @@ function App() {
               <Button color="inherit" onClick={() => setView("shared")} startIcon={<Share />}>
                 Shared
               </Button>
-              <Button color="inherit" onClick={() => setView("admin")} startIcon={<Dashboard />}>
-                Admin
-              </Button>
+              <Button color="inherit" onClick={() => setToken("")}>Logout</Button>
             </Box>
           )}
         </Toolbar>
@@ -127,34 +139,10 @@ function App() {
       <Container sx={{ mt: 4 }}>
         {!token ? (
           <Box>
-            <TextField
-              label="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              fullWidth
-              sx={{ mb: 2 }}
-            />
-            <TextField
-              label="Password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              fullWidth
-              sx={{ mb: 2 }}
-            />
-            <Button
-              variant="contained"
-              onClick={() => axios.post("http://localhost:5000/signup", { email, password }).then(() => alert("User registered."))}
-            >
-              Signup
-            </Button>
-            <Button
-              variant="contained"
-              sx={{ ml: 2 }}
-              onClick={() => axios.post("http://localhost:5000/login", { email, password }).then((res) => setToken(res.data.token))}
-            >
-              Login
-            </Button>
+            <TextField label="Email" value={email} onChange={(e) => setEmail(e.target.value)} fullWidth sx={{ mb: 2 }} />
+            <TextField label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} fullWidth sx={{ mb: 2 }} />
+            <Button variant="contained" onClick={handleSignup}>Signup</Button>
+            <Button variant="contained" sx={{ ml: 2 }} onClick={handleLogin}>Login</Button>
           </Box>
         ) : (
           <Box>
@@ -167,9 +155,7 @@ function App() {
                   <MenuItem value="es">Spanish</MenuItem>
                   <MenuItem value="de">German</MenuItem>
                 </Select>
-                <Button variant="contained" onClick={handleUpload} sx={{ ml: 2 }}>
-                  Upload
-                </Button>
+                <Button variant="contained" onClick={handleUpload} sx={{ ml: 2 }}>Upload</Button>
                 {result && (
                   <Box sx={{ mt: 4 }}>
                     <Typography variant="h6">Corrected Text</Typography>
@@ -180,37 +166,13 @@ function App() {
                 )}
               </Box>
             )}
-
             {view === "history" && (
-              <Box>
-                <Typography variant="h6">Document History</Typography>
-                <List>
-                  {documents.map((doc) => (
-                    <ListItem key={doc._id}>
-                      <ListItemText primary={doc.filename} />
-                      <Button variant="contained" onClick={() => handleDownload(doc._id)}>
-                        Download
-                      </Button>
-                    </ListItem>
-                  ))}
-                </List>
-              </Box>
-            )}
-
-            {view === "shared" && (
-              <Box>
-                <Typography variant="h6">Shared Documents</Typography>
-                <List>
-                  {sharedDocuments.map((doc) => (
-                    <ListItem key={doc._id}>
-                      <ListItemText primary={doc.filename} />
-                      <Button variant="contained" onClick={() => handleDownload(doc._id)}>
-                        Download
-                      </Button>
-                    </ListItem>
-                  ))}
-                </List>
-              </Box>
+              <List>{documents.map((doc) => (
+                <ListItem key={doc._id}>
+                  <ListItemText primary={doc.filename} />
+                  <Button variant="contained" onClick={() => handleDownload(doc._id)}>Download</Button>
+                </ListItem>
+              ))}</List>
             )}
           </Box>
         )}

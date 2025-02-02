@@ -7,7 +7,7 @@ const HistoryPage = ({ token }) => {
 
   useEffect(() => {
     axios
-      .get("http://localhost:5000/documents", {
+      .get("http://localhost:5000/api/documents/documents", {
         headers: { Authorization: `Bearer ${token}` },
       })
       .then((res) => setDocuments(res.data))
@@ -16,7 +16,7 @@ const HistoryPage = ({ token }) => {
 
   const handleDownload = async (id) => {
     try {
-      const res = await axios.get(`http://localhost:5000/download/${id}`, {
+      const res = await axios.get(`http://localhost:5000/api/documents/download/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
         responseType: "blob",
       });

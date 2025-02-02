@@ -7,7 +7,7 @@ const SharedPage = ({ token }) => {
 
   useEffect(() => {
     axios
-      .get("http://localhost:5000/shared-documents", {
+      .get("http://localhost:5000/api/documents/shared-documents", {
         headers: { Authorization: `Bearer ${token}` },
       })
       .then((res) => setSharedDocuments(res.data))
@@ -16,7 +16,7 @@ const SharedPage = ({ token }) => {
 
   const handleDownload = async (id) => {
     try {
-      const res = await axios.get(`http://localhost:5000/download/${id}`, {
+      const res = await axios.get(`http://localhost:5000/api/documents/download/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
         responseType: "blob",
       });
